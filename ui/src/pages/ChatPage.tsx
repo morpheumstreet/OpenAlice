@@ -1,15 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { api, type ToolCall, type StreamingToolCall } from '../api'
+import { api } from '../api'
 import type { ChannelListItem } from '../api/channels'
-import { useSSE } from '../hooks/useSSE'
+import { useChat } from '../hooks/useChat'
 import { ChatMessage, ToolCallGroup, ThinkingIndicator, StreamingToolGroup } from '../components/ChatMessage'
 import { ChatInput } from '../components/ChatInput'
 import { ChannelConfigModal } from '../components/ChannelConfigModal'
-
-/** Unified display item for the message list. */
-type DisplayItem =
-  | { kind: 'text'; role: 'user' | 'assistant' | 'notification'; text: string; timestamp?: string | null; media?: Array<{ type: string; url: string }>; _id: number }
-  | { kind: 'tool_calls'; calls: ToolCall[]; timestamp?: string; _id: number }
 
 interface ChatPageProps {
   onSSEStatus?: (connected: boolean) => void
@@ -18,15 +13,13 @@ interface ChatPageProps {
 export function ChatPage({ onSSEStatus }: ChatPageProps) {
   const [channels, setChannels] = useState<ChannelListItem[]>([{ id: 'default', label: 'Alice' }])
   const [activeChannel, setActiveChannel] = useState('default')
-  const [messages, setMessages] = useState<DisplayItem[]>([])
-  const [isWaiting, setIsWaiting] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(0)
-  const [streamText, setStreamText] = useState('')
-  const [streamTools, setStreamTools] = useState<StreamingToolCall[]>([])
-  const streamTextRef = useRef('')
-  const streamToolsRef = useRef<StreamingToolCall[]>([])
-  streamToolsRef.current = streamTools
+
+  const { messages, streamSegments, isWaiting, send, abort } = useChat({
+    channel: activeChannel,
+    onSSEStatus: activeChannel === 'default' ? onSSEStatus : undefined,
+  })
 
   // Popover state
   const [popoverOpen, setPopoverOpen] = useState(false)
@@ -37,12 +30,9 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
   const [editingChannel, setEditingChannel] = useState<ChannelListItem | null>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
 
-  const nextId = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const userScrolledUp = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const activeChannelRef = useRef(activeChannel)
-  activeChannelRef.current = activeChannel
 
   const isOnSubChannel = activeChannel !== 'default'
   const subChannels = channels.filter((ch) => ch.id !== 'default')
@@ -69,7 +59,7 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
     }
   }, [])
 
-  useEffect(scrollToBottom, [messages, isWaiting, streamText, streamTools, scrollToBottom])
+  useEffect(scrollToBottom, [messages, isWaiting, streamSegments, scrollToBottom])
 
   // Detect user scroll
   useEffect(() => {
@@ -91,116 +81,10 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
     api.channels.list().then(({ channels: ch }) => setChannels(ch)).catch(() => {})
   }, [])
 
-  // Load chat history when active channel changes
+  // Cleanup abort on unmount
   useEffect(() => {
-    const channel = activeChannel === 'default' ? undefined : activeChannel
-    api.chat.history(100, channel).then(({ messages: msgs }) => {
-      setMessages(msgs.map((m): DisplayItem => {
-        if (m.kind === 'text' && m.metadata?.kind === 'notification') {
-          return { ...m, role: 'notification', _id: nextId.current++ }
-        }
-        return { ...m, _id: nextId.current++ }
-      }))
-    }).catch((err) => {
-      console.warn('Failed to load history:', err)
-    })
-  }, [activeChannel])
-
-  // SSE for the active channel
-  const sseChannel = activeChannel === 'default' ? undefined : activeChannel
-  useSSE({
-    url: sseChannel ? `/api/chat/events?channel=${encodeURIComponent(sseChannel)}` : '/api/chat/events',
-    onMessage: (data) => {
-      // Streaming events (tool_use / tool_result / text) during AI generation
-      if (data.type === 'stream' && data.event) {
-        const ev = data.event
-        if (ev.type === 'tool_use') {
-          setStreamTools((prev) => [...prev, {
-            id: ev.id, name: ev.name, input: ev.input, status: 'running',
-          }])
-        } else if (ev.type === 'tool_result') {
-          setStreamTools((prev) => prev.map((t) =>
-            t.id === ev.tool_use_id ? { ...t, status: 'done' as const, result: ev.content } : t,
-          ))
-        } else if (ev.type === 'text') {
-          streamTextRef.current += ev.text
-          setStreamText(streamTextRef.current)
-        }
-        return
-      }
-
-      // Push notifications (heartbeat, cron, etc.)
-      if (data.type === 'message' && data.text) {
-        const role = data.kind === 'message' ? 'assistant' : 'notification'
-        setMessages((prev) => [
-          ...prev,
-          { kind: 'text', role, text: data.text, media: data.media, _id: nextId.current++ },
-        ])
-        if (userScrolledUp.current) {
-          setNewMsgCount((c) => c + 1)
-        }
-      }
-    },
-    onStatus: activeChannel === 'default' ? onSSEStatus : undefined,
-  })
-
-  // Send message
-  const handleSend = useCallback(async (text: string) => {
-    // Clear streaming state from previous round
-    setStreamText('')
-    setStreamTools([])
-    streamTextRef.current = ''
-
-    setMessages((prev) => [...prev, { kind: 'text', role: 'user', text, _id: nextId.current++ }])
-    setIsWaiting(true)
-
-    try {
-      const channel = activeChannelRef.current === 'default' ? undefined : activeChannelRef.current
-      const data = await api.chat.send(text, channel)
-
-      // POST returned — persist streaming tool calls, then add final text
-      const tools = streamToolsRef.current
-      setStreamText('')
-      setStreamTools([])
-      streamTextRef.current = ''
-
-      if (data.text) {
-        const media = data.media?.length ? data.media : undefined
-        setMessages((prev) => {
-          const next = [...prev]
-          // Persist tool calls collected during streaming
-          if (tools.length > 0) {
-            next.push({
-              kind: 'tool_calls',
-              calls: tools.map((t) => ({
-                name: t.name,
-                input: typeof t.input === 'string' ? t.input : JSON.stringify(t.input ?? ''),
-                result: t.result,
-              })),
-              _id: nextId.current++,
-            })
-          }
-          next.push({ kind: 'text', role: 'assistant', text: data.text, media, _id: nextId.current++ })
-          return next
-        })
-        if (userScrolledUp.current) {
-          setNewMsgCount((c) => c + 1)
-        }
-      }
-    } catch (err) {
-      setStreamText('')
-      setStreamTools([])
-      streamTextRef.current = ''
-
-      const msg = err instanceof Error ? err.message : 'Unknown error'
-      setMessages((prev) => [
-        ...prev,
-        { kind: 'text', role: 'notification', text: `Error: ${msg}`, _id: nextId.current++ },
-      ])
-    } finally {
-      setIsWaiting(false)
-    }
-  }, [])
+    return () => { abort() }
+  }, [abort])
 
   const handleScrollToBottom = useCallback(() => {
     userScrolledUp.current = false
@@ -440,31 +324,46 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
           })}
           {isWaiting && (
             <div className={`${messages.length > 0 ? 'mt-5' : ''}`}>
-              {streamTools.length > 0 || streamText ? (
+              {streamSegments.length > 0 ? (
                 <>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center text-accent shrink-0">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-                      </svg>
-                    </div>
-                    <span className="text-[12px] text-text-muted font-medium">Alice</span>
-                  </div>
-                  {streamTools.length > 0 && <StreamingToolGroup tools={streamTools} />}
-                  {streamText ? (
-                    <div className="mt-1">
-                      <ChatMessage role="assistant" text={streamText} isGrouped />
-                    </div>
-                  ) : streamTools.length > 0 && streamTools.every((t) => t.status === 'done') ? (
-                    /* All tools finished but text hasn't arrived yet — show thinking dots */
-                    <div className="text-text-muted ml-8 mt-1">
-                      <div className="flex">
-                        <span className="thinking-dot">.</span>
-                        <span className="thinking-dot">.</span>
-                        <span className="thinking-dot">.</span>
+                  {streamSegments.map((seg, i) => {
+                    if (seg.kind === 'tools') {
+                      const allDone = seg.tools.every((t) => t.status === 'done')
+                      return (
+                        <div key={i} className={i > 0 ? 'mt-1' : ''}>
+                          {allDone ? (
+                            <ToolCallGroup calls={seg.tools.map((t) => ({
+                              name: t.name,
+                              input: typeof t.input === 'string' ? t.input : JSON.stringify(t.input ?? ''),
+                              result: t.result,
+                            }))} />
+                          ) : (
+                            <StreamingToolGroup tools={seg.tools} />
+                          )}
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={i} className={i > 0 ? 'mt-1' : ''}>
+                        <ChatMessage role="assistant" text={seg.text} isGrouped={i > 0} />
                       </div>
-                    </div>
-                  ) : null}
+                    )
+                  })}
+                  {(() => {
+                    const last = streamSegments[streamSegments.length - 1]
+                    if (last?.kind === 'tools' && last.tools.every((t) => t.status === 'done')) {
+                      return (
+                        <div className="text-text-muted ml-8 mt-1">
+                          <div className="flex">
+                            <span className="thinking-dot">.</span>
+                            <span className="thinking-dot">.</span>
+                            <span className="thinking-dot">.</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </>
               ) : (
                 <ThinkingIndicator />
@@ -497,7 +396,7 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
       )}
 
       {/* Input */}
-      <ChatInput disabled={isWaiting} onSend={handleSend} />
+      <ChatInput disabled={isWaiting} onSend={send} />
 
       {/* Channel config modal */}
       {editingChannel && (
