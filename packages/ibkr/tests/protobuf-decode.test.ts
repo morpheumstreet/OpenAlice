@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { Decoder } from '../src/decoder.js'
+import { Decoder, applyAllHandlers } from '../src/decoder'
 import { DefaultEWrapper } from '../src/wrapper.js'
 import { BinaryWriter } from '@bufbuild/protobuf/wire'
 import { CurrentTime } from '../src/protobuf/CurrentTime.js'
@@ -25,6 +25,7 @@ describe('Decoder.processProtoBuf', () => {
     const wrapper = new DefaultEWrapper()
     const spy = vi.spyOn(wrapper, 'currentTime')
     const decoder = new Decoder(wrapper, 222)
+    applyAllHandlers(decoder)
 
     const buf = encodeProto(CurrentTime, { currentTime: 1710500000 })
     decoder.processProtoBuf(buf, IN.CURRENT_TIME)
@@ -36,6 +37,7 @@ describe('Decoder.processProtoBuf', () => {
     const wrapper = new DefaultEWrapper()
     const spy = vi.spyOn(wrapper, 'nextValidId')
     const decoder = new Decoder(wrapper, 222)
+    applyAllHandlers(decoder)
 
     const buf = encodeProto(NextValidId, { orderId: 42 })
     decoder.processProtoBuf(buf, IN.NEXT_VALID_ID)
@@ -47,6 +49,7 @@ describe('Decoder.processProtoBuf', () => {
     const wrapper = new DefaultEWrapper()
     const spy = vi.spyOn(wrapper, 'error')
     const decoder = new Decoder(wrapper, 222)
+    applyAllHandlers(decoder)
 
     const buf = encodeProto(ErrorMessage, {
       id: -1,
@@ -64,6 +67,7 @@ describe('Decoder.processProtoBuf', () => {
     const wrapper = new DefaultEWrapper()
     const spy = vi.spyOn(wrapper, 'managedAccounts')
     const decoder = new Decoder(wrapper, 222)
+    applyAllHandlers(decoder)
 
     const buf = encodeProto(ManagedAccounts, { accountsList: 'DU12345' })
     decoder.processProtoBuf(buf, IN.MANAGED_ACCTS)
@@ -74,6 +78,7 @@ describe('Decoder.processProtoBuf', () => {
   it('logs unknown protobuf msgId without crashing', () => {
     const wrapper = new DefaultEWrapper()
     const decoder = new Decoder(wrapper, 222)
+    applyAllHandlers(decoder)
 
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     decoder.processProtoBuf(Buffer.from([]), 999)

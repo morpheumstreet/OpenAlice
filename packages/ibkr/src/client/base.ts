@@ -8,7 +8,7 @@
 import { makeMsg, makeMsgProto, makeField, makeInitialMsg, readMsg, readFields } from '../comm.js'
 import { Connection } from '../connection.js'
 import { EReader } from '../reader.js'
-import { Decoder } from '../decoder.js'
+import { Decoder, applyAllHandlers } from '../decoder'
 import type { EWrapper } from '../wrapper.js'
 import { OUT } from '../message.js'
 import {
@@ -155,6 +155,7 @@ export class EClient {
       this.connTime = connTime
 
       this.decoder = new Decoder(this.wrapper, this.serverVersion())
+      applyAllHandlers(this.decoder)
       this.setConnState(EClient.CONNECTED)
 
       // Start reader

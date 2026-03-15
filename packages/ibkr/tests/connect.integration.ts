@@ -1,9 +1,10 @@
 /**
- * Quick smoke test — connect to TWS/IB Gateway and request current time.
- * Usage: npx tsx test-connect.ts [port]
+ * Integration test — connect to TWS/IB Gateway and request current time.
+ * Requires a running TWS/IB Gateway instance.
+ * Usage: npx tsx tests/connect.integration.ts [port]
  */
 
-import { EClient, DefaultEWrapper } from './src/index.js'
+import { EClient, DefaultEWrapper } from '../src/index.js'
 
 class TestWrapper extends DefaultEWrapper {
   connectAck(): void {
