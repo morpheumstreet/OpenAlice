@@ -1,5 +1,5 @@
 import type { AccountManager } from '../extension/trading/index.js'
-import type { ITradingGit } from '../extension/trading/git/interfaces.js'
+import type { ITradingGit } from '../extension/trading/index.js'
 import type { CronEngine } from '../task/cron/engine.js'
 import type { Heartbeat } from '../task/heartbeat/index.js'
 import type { Config, WebChannel } from './config.js'

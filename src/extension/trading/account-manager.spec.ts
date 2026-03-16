@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { Contract, ContractDescription, ContractDetails } from '@traderalice/ibkr'
+import { ContractDescription } from '@traderalice/ibkr'
 import { AccountManager } from './account-manager.js'
+import { UnifiedTradingAccount } from './UnifiedTradingAccount.js'
 import {
   MockBroker,
   makeContract,
 } from './__test__/mock-broker.js'
 import './contract-ext.js'
+
+function makeUta(broker: MockBroker, platformId?: string): UnifiedTradingAccount {
+  return new UnifiedTradingAccount(broker, { platformId })
+}
 
 describe('AccountManager', () => {
   let manager: AccountManager
@@ -16,32 +21,32 @@ describe('AccountManager', () => {
 
   // ==================== Registration ====================
 
-  describe('addAccount / removeAccount', () => {
-    it('adds and retrieves an account', () => {
-      const acct = new MockBroker({ id: 'a1' })
-      manager.addAccount(acct)
+  describe('add / remove', () => {
+    it('adds and retrieves a UTA', () => {
+      const uta = makeUta(new MockBroker({ id: 'a1' }))
+      manager.add(uta)
 
-      expect(manager.getAccount('a1')).toBe(acct)
+      expect(manager.get('a1')).toBe(uta)
       expect(manager.has('a1')).toBe(true)
       expect(manager.size).toBe(1)
     })
 
     it('throws on duplicate id', () => {
-      manager.addAccount(new MockBroker({ id: 'a1' }))
+      manager.add(makeUta(new MockBroker({ id: 'a1' })))
       expect(() =>
-        manager.addAccount(new MockBroker({ id: 'a1' })),
+        manager.add(makeUta(new MockBroker({ id: 'a1' }))),
       ).toThrow('already registered')
     })
 
-    it('removes an account', () => {
-      manager.addAccount(new MockBroker({ id: 'a1' }))
-      manager.removeAccount('a1')
+    it('removes a UTA', () => {
+      manager.add(makeUta(new MockBroker({ id: 'a1' })))
+      manager.remove('a1')
       expect(manager.has('a1')).toBe(false)
       expect(manager.size).toBe(0)
     })
 
     it('returns undefined for unknown id', () => {
-      expect(manager.getAccount('nope')).toBeUndefined()
+      expect(manager.get('nope')).toBeUndefined()
     })
   })
 
@@ -49,8 +54,8 @@ describe('AccountManager', () => {
 
   describe('listAccounts', () => {
     it('returns summaries of all accounts', () => {
-      manager.addAccount(new MockBroker({ id: 'a1', provider: 'alpaca', label: 'Paper' }))
-      manager.addAccount(new MockBroker({ id: 'a2', provider: 'ccxt', label: 'Bybit' }))
+      manager.add(makeUta(new MockBroker({ id: 'a1', provider: 'alpaca', label: 'Paper' })))
+      manager.add(makeUta(new MockBroker({ id: 'a2', provider: 'ccxt', label: 'Bybit' })))
 
       const list = manager.listAccounts()
       expect(list).toHaveLength(2)
@@ -60,8 +65,8 @@ describe('AccountManager', () => {
     })
 
     it('includes platformId when provided', () => {
-      manager.addAccount(new MockBroker({ id: 'a1', provider: 'alpaca' }), 'alpaca-paper')
-      manager.addAccount(new MockBroker({ id: 'a2', provider: 'ccxt' }))
+      manager.add(makeUta(new MockBroker({ id: 'a1', provider: 'alpaca' }), 'alpaca-paper'))
+      manager.add(makeUta(new MockBroker({ id: 'a2', provider: 'ccxt' })))
 
       const list = manager.listAccounts()
       expect(list[0].platformId).toBe('alpaca-paper')
@@ -69,14 +74,45 @@ describe('AccountManager', () => {
     })
   })
 
+  // ==================== resolve ====================
+
+  describe('resolve', () => {
+    it('returns all when no source', () => {
+      manager.add(makeUta(new MockBroker({ id: 'a1' })))
+      manager.add(makeUta(new MockBroker({ id: 'a2' })))
+      expect(manager.resolve()).toHaveLength(2)
+    })
+
+    it('matches by id', () => {
+      manager.add(makeUta(new MockBroker({ id: 'a1' })))
+      manager.add(makeUta(new MockBroker({ id: 'a2' })))
+      expect(manager.resolve('a1')).toHaveLength(1)
+      expect(manager.resolve('a1')[0].id).toBe('a1')
+    })
+
+    it('matches by provider', () => {
+      manager.add(makeUta(new MockBroker({ id: 'a1', provider: 'alpaca' })))
+      manager.add(makeUta(new MockBroker({ id: 'a2', provider: 'ccxt' })))
+      expect(manager.resolve('alpaca')).toHaveLength(1)
+    })
+
+    it('resolveOne throws on zero matches', () => {
+      expect(() => manager.resolveOne('nope')).toThrow('No account found')
+    })
+
+    it('resolveOne throws on multiple matches', () => {
+      manager.add(makeUta(new MockBroker({ id: 'a1', provider: 'ccxt' })))
+      manager.add(makeUta(new MockBroker({ id: 'a2', provider: 'ccxt' })))
+      expect(() => manager.resolveOne('ccxt')).toThrow('Multiple accounts')
+    })
+  })
+
   // ==================== getAggregatedEquity ====================
 
   describe('getAggregatedEquity', () => {
     it('aggregates equity across accounts', async () => {
-      const a1 = new MockBroker({ id: 'a1', label: 'A', accountInfo: { netLiquidation: 50_000, totalCashValue: 30_000, unrealizedPnL: 2_000, realizedPnL: 500 } })
-      const a2 = new MockBroker({ id: 'a2', label: 'B', accountInfo: { netLiquidation: 75_000, totalCashValue: 60_000, unrealizedPnL: 3_000, realizedPnL: 1_000 } })
-      manager.addAccount(a1)
-      manager.addAccount(a2)
+      manager.add(makeUta(new MockBroker({ id: 'a1', label: 'A', accountInfo: { netLiquidation: 50_000, totalCashValue: 30_000, unrealizedPnL: 2_000, realizedPnL: 500 } })))
+      manager.add(makeUta(new MockBroker({ id: 'a2', label: 'B', accountInfo: { netLiquidation: 75_000, totalCashValue: 60_000, unrealizedPnL: 3_000, realizedPnL: 1_000 } })))
 
       const result = await manager.getAggregatedEquity()
       expect(result.totalEquity).toBe(125_000)
@@ -107,8 +143,8 @@ describe('AccountManager', () => {
       desc2.contract = makeContract({ aliceId: 'a2-AAPL' })
       a2.searchContracts.mockResolvedValue([desc2])
 
-      manager.addAccount(a1)
-      manager.addAccount(a2)
+      manager.add(makeUta(a1))
+      manager.add(makeUta(a2))
 
       const results = await manager.searchContracts('AAPL')
       expect(results).toHaveLength(2)
@@ -125,8 +161,8 @@ describe('AccountManager', () => {
       desc2.contract = makeContract({ aliceId: 'a2-AAPL' })
       a2.searchContracts.mockResolvedValue([desc2])
 
-      manager.addAccount(a1)
-      manager.addAccount(a2)
+      manager.add(makeUta(a1))
+      manager.add(makeUta(a2))
 
       const results = await manager.searchContracts('AAPL', 'a1')
       expect(results).toHaveLength(1)
@@ -141,8 +177,8 @@ describe('AccountManager', () => {
       desc.contract = makeContract()
       a2.searchContracts.mockResolvedValue([desc])
 
-      manager.addAccount(a1)
-      manager.addAccount(a2)
+      manager.add(makeUta(a1))
+      manager.add(makeUta(a2))
 
       const results = await manager.searchContracts('AAPL')
       expect(results).toHaveLength(1)
@@ -154,8 +190,7 @@ describe('AccountManager', () => {
 
   describe('getContractDetails', () => {
     it('returns details from specified account', async () => {
-      const a1 = new MockBroker({ id: 'a1' })
-      manager.addAccount(a1)
+      manager.add(makeUta(new MockBroker({ id: 'a1' })))
 
       const query = makeContract({ symbol: 'AAPL' })
       const details = await manager.getContractDetails(query, 'a1')
@@ -175,24 +210,23 @@ describe('AccountManager', () => {
 
   describe('closeAll', () => {
     it('calls close on all accounts and clears entries', async () => {
-      const a1 = new MockBroker({ id: 'a1' })
-      const a2 = new MockBroker({ id: 'a2' })
-      manager.addAccount(a1)
-      manager.addAccount(a2)
+      const b1 = new MockBroker({ id: 'a1' })
+      const b2 = new MockBroker({ id: 'a2' })
+      manager.add(makeUta(b1))
+      manager.add(makeUta(b2))
 
       await manager.closeAll()
 
-      expect(a1.close).toHaveBeenCalled()
-      expect(a2.close).toHaveBeenCalled()
+      expect(b1.close).toHaveBeenCalled()
+      expect(b2.close).toHaveBeenCalled()
       expect(manager.size).toBe(0)
     })
 
     it('does not throw if one account fails to close', async () => {
-      const a1 = new MockBroker({ id: 'a1' })
-      a1.close.mockRejectedValue(new Error('close failed'))
-      manager.addAccount(a1)
+      const b1 = new MockBroker({ id: 'a1' })
+      b1.close.mockRejectedValue(new Error('close failed'))
+      manager.add(makeUta(b1))
 
-      // Should not throw
       await manager.closeAll()
       expect(manager.size).toBe(0)
     })

@@ -33,7 +33,7 @@ export function createTradingRoutes(ctx: EngineContext) {
 
   // Account info
   app.get('/accounts/:id/account', async (c) => {
-    const account = ctx.accountManager.getAccount(c.req.param('id'))
+    const account = ctx.accountManager.get(c.req.param('id'))
     if (!account) return c.json({ error: 'Account not found' }, 404)
     try {
       return c.json(await account.getAccount())
@@ -44,7 +44,7 @@ export function createTradingRoutes(ctx: EngineContext) {
 
   // Positions
   app.get('/accounts/:id/positions', async (c) => {
-    const account = ctx.accountManager.getAccount(c.req.param('id'))
+    const account = ctx.accountManager.get(c.req.param('id'))
     if (!account) return c.json({ error: 'Account not found' }, 404)
     try {
       const positions = await account.getPositions()
@@ -56,7 +56,7 @@ export function createTradingRoutes(ctx: EngineContext) {
 
   // Orders
   app.get('/accounts/:id/orders', async (c) => {
-    const account = ctx.accountManager.getAccount(c.req.param('id'))
+    const account = ctx.accountManager.get(c.req.param('id'))
     if (!account) return c.json({ error: 'Account not found' }, 404)
     try {
       const orders = await account.getOrders()
@@ -68,7 +68,7 @@ export function createTradingRoutes(ctx: EngineContext) {
 
   // Market clock (optional capability)
   app.get('/accounts/:id/market-clock', async (c) => {
-    const account = ctx.accountManager.getAccount(c.req.param('id'))
+    const account = ctx.accountManager.get(c.req.param('id'))
     if (!account) return c.json({ error: 'Account not found' }, 404)
     if (!account.getMarketClock) return c.json({ error: 'Market clock not supported' }, 501)
     try {
@@ -80,7 +80,7 @@ export function createTradingRoutes(ctx: EngineContext) {
 
   // Quote
   app.get('/accounts/:id/quote/:symbol', async (c) => {
-    const account = ctx.accountManager.getAccount(c.req.param('id'))
+    const account = ctx.accountManager.get(c.req.param('id'))
     if (!account) return c.json({ error: 'Account not found' }, 404)
     try {
       const { Contract } = await import('@traderalice/ibkr')

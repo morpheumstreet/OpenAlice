@@ -1,6 +1,10 @@
 // Contract extension (aliceId on IBKR Contract)
 import './contract-ext.js'
 
+// UTA
+export { UnifiedTradingAccount } from './UnifiedTradingAccount.js'
+export type { UnifiedTradingAccountOptions, StagePlaceOrderParams, StageModifyOrderParams, StageClosePositionParams } from './UnifiedTradingAccount.js'
+
 // Interfaces
 export type {
   Position,
@@ -19,7 +23,6 @@ export type {
 // AccountManager
 export { AccountManager } from './account-manager.js'
 export type {
-  AccountEntry,
   AccountSummary,
   AggregatedEquity,
   ContractSearchResult,
@@ -65,10 +68,10 @@ export type {
   GuardRegistryEntry,
 } from './guards/index.js'
 
-// Operation Dispatcher
+// Operation Dispatcher (internal, but exported for testing)
 export { createOperationDispatcher } from './operation-dispatcher.js'
 
-// Wallet State Bridge
+// Wallet State Bridge (internal, but exported for testing)
 export { createWalletStateBridge } from './wallet-state-bridge.js'
 
 // Platform
@@ -83,13 +86,8 @@ export {
   validatePlatformRefs,
 } from './platform-factory.js'
 
-// Factory (wiring)
-export { wireAccountTrading } from './factory.js'
-export type { AccountSetup } from './factory.js'
-
-// Unified Tool Factory
-export { createTradingTools, resolveAccounts, resolveOne } from './adapter.js'
-export type { AccountResolver, ResolvedAccount } from './adapter.js'
+// AI Tool Factory
+export { createTradingTools } from './adapter.js'
 
 // Providers
 export { AlpacaBroker } from './providers/alpaca/index.js'
