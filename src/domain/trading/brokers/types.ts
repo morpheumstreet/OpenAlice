@@ -57,7 +57,7 @@ export interface AccountInfo {
   netLiquidation: number
   totalCashValue: number
   unrealizedPnL: number
-  realizedPnL: number
+  realizedPnL?: number
   buyingPower?: number
   initMarginReq?: number
   maintMarginReq?: number

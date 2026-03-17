@@ -28,11 +28,9 @@ import type {
   AlpacaPositionRaw,
   AlpacaOrderRaw,
   AlpacaSnapshotRaw,
-  AlpacaFillActivityRaw,
   AlpacaClockRaw,
 } from './alpaca-types.js'
 import { makeContract, resolveSymbol, mapAlpacaOrderStatus, makeOrderState } from './alpaca-contracts.js'
-import { computeRealizedPnL } from './alpaca-pnl.js'
 
 /** Map IBKR orderType codes to Alpaca API order type strings. */
 function ibkrOrderTypeToAlpaca(orderType: string): string {
@@ -65,10 +63,6 @@ export class AlpacaBroker implements IBroker {
 
   private client!: InstanceType<typeof Alpaca>
   private readonly config: AlpacaBrokerConfig
-
-  /** Cached realized PnL from FILL activities (FIFO lot matching) */
-  private realizedPnLCache: { value: number; updatedAt: number } | null = null
-  private static readonly REALIZED_PNL_TTL_MS = 60_000
 
   constructor(config: AlpacaBrokerConfig) {
     this.config = config
@@ -264,10 +258,9 @@ export class AlpacaBroker implements IBroker {
   // ---- Queries ----
 
   async getAccount(): Promise<AccountInfo> {
-    const [account, positions, realizedPnL] = await Promise.all([
+    const [account, positions] = await Promise.all([
       this.client.getAccount() as Promise<AlpacaBrokerRaw>,
       this.client.getPositions() as Promise<AlpacaPositionRaw[]>,
-      this.getRealizedPnL(),
     ])
 
     // Alpaca account API doesn't provide unrealizedPnL — aggregate from positions with Decimal
@@ -280,7 +273,6 @@ export class AlpacaBroker implements IBroker {
       netLiquidation: parseFloat(account.equity),
       totalCashValue: parseFloat(account.cash),
       unrealizedPnL,
-      realizedPnL,
       buyingPower: parseFloat(account.buying_power),
       dayTradesRemaining: account.daytrade_count != null ? Math.max(0, 3 - account.daytrade_count) : undefined,
     }
@@ -355,57 +347,6 @@ export class AlpacaBroker implements IBroker {
     }
   }
 
-  // ---- Realized PnL ----
-
-  /**
-   * Get realized PnL from Alpaca FILL activities with TTL cache.
-   * Fetches all historical fills, matches buys against sells per symbol using FIFO,
-   * and sums the realized profit/loss.
-   */
-  private async getRealizedPnL(): Promise<number> {
-    const now = Date.now()
-    if (this.realizedPnLCache && (now - this.realizedPnLCache.updatedAt) < AlpacaBroker.REALIZED_PNL_TTL_MS) {
-      return this.realizedPnLCache.value
-    }
-
-    try {
-      const fills = await this.fetchAllFills()
-      const value = computeRealizedPnL(fills)
-      this.realizedPnLCache = { value, updatedAt: now }
-      return value
-    } catch (err) {
-      // On error, return cached value if available, otherwise 0
-      console.warn(`AlpacaBroker[${this.id}]: failed to fetch FILL activities:`, err)
-      return this.realizedPnLCache?.value ?? 0
-    }
-  }
-
-  /** Paginate through all FILL activities (newest first by default). */
-  private async fetchAllFills(): Promise<AlpacaFillActivityRaw[]> {
-    const all: AlpacaFillActivityRaw[] = []
-    let pageToken: string | undefined
-
-    for (;;) {
-      const page = await this.client.getAccountActivities({
-        activityTypes: 'FILL',
-        pageSize: 100,
-        pageToken,
-        direction: 'asc', // oldest first → natural FIFO order
-        until: undefined,
-        after: undefined,
-        date: undefined,
-      }) as AlpacaFillActivityRaw[]
-
-      if (!page || page.length === 0) break
-      all.push(...page)
-
-      // Alpaca pagination: last item's id is the next page_token
-      if (page.length < 100) break
-      pageToken = (page[page.length - 1] as unknown as { id: string }).id
-    }
-
-    return all
-  }
 
   // ---- Internal ----
 
