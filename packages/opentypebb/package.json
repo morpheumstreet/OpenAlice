@@ -1,6 +1,6 @@
 {
   "name": "@traderalice/opentypebb",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "TypeScript port of OpenBB Platform — financial data infrastructure",
   "type": "module",
   "exports": {
