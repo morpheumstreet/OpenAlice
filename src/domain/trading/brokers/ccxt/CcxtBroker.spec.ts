@@ -100,9 +100,9 @@ describe('CcxtBroker — constructor', () => {
     expect((acc as any).readOnly).toBe(true)
   })
 
-  it('uses exchange name as provider', () => {
+  it('stores exchange name in meta', () => {
     const acc = makeAccount()
-    expect(acc.provider).toBe('bybit')
+    expect(acc.meta).toEqual({ exchange: 'bybit' })
   })
 
   it('defaults id to exchange-main', () => {

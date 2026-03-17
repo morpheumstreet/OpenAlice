@@ -58,7 +58,6 @@ function ibkrTifToAlpaca(tif: string): string {
 
 export class AlpacaBroker implements IBroker {
   readonly id: string
-  readonly provider = 'alpaca'
   readonly label: string
 
   private client!: InstanceType<typeof Alpaca>
@@ -128,16 +127,16 @@ export class AlpacaBroker implements IBroker {
     // Alpaca tickers are unique for stocks — pattern is treated as exact ticker match
     const ticker = pattern.toUpperCase()
     const desc = new ContractDescription()
-    desc.contract = makeContract(ticker, this.provider)
+    desc.contract = makeContract(ticker, 'alpaca')
     return [desc]
   }
 
   async getContractDetails(query: Contract): Promise<ContractDetails | null> {
-    const symbol = resolveSymbol(query, this.provider)
+    const symbol = resolveSymbol(query, 'alpaca')
     if (!symbol) return null
 
     const details = new ContractDetails()
-    details.contract = makeContract(symbol, this.provider)
+    details.contract = makeContract(symbol, 'alpaca')
     details.validExchanges = 'SMART,NYSE,NASDAQ,ARCA'
     details.orderTypes = 'MKT,LMT,STP,STP LMT,TRAIL'
     details.stockType = 'COMMON'
@@ -147,7 +146,7 @@ export class AlpacaBroker implements IBroker {
   // ---- Trading operations ----
 
   async placeOrder(contract: Contract, order: Order): Promise<PlaceOrderResult> {
-    const symbol = resolveSymbol(contract, this.provider)
+    const symbol = resolveSymbol(contract, 'alpaca')
     if (!symbol) {
       return { success: false, error: 'Cannot resolve contract to Alpaca symbol' }
     }
@@ -222,7 +221,7 @@ export class AlpacaBroker implements IBroker {
   }
 
   async closePosition(contract: Contract, quantity?: Decimal): Promise<PlaceOrderResult> {
-    const symbol = resolveSymbol(contract, this.provider)
+    const symbol = resolveSymbol(contract, 'alpaca')
     if (!symbol) {
       return { success: false, error: 'Cannot resolve contract to Alpaca symbol' }
     }
@@ -282,7 +281,7 @@ export class AlpacaBroker implements IBroker {
     const raw = await this.client.getPositions() as AlpacaPositionRaw[]
 
     return raw.map(p => ({
-      contract: makeContract(p.symbol, this.provider),
+      contract: makeContract(p.symbol, 'alpaca'),
       side: p.side === 'long' ? 'long' as const : 'short' as const,
       quantity: new Decimal(p.qty),
       avgCost: parseFloat(p.avg_entry_price),
@@ -313,13 +312,13 @@ export class AlpacaBroker implements IBroker {
   }
 
   async getQuote(contract: Contract): Promise<Quote> {
-    const symbol = resolveSymbol(contract, this.provider)
+    const symbol = resolveSymbol(contract, 'alpaca')
     if (!symbol) throw new Error('Cannot resolve contract to Alpaca symbol')
 
     const snapshot = await this.client.getSnapshot(symbol) as AlpacaSnapshotRaw
 
     return {
-      contract: makeContract(symbol, this.provider),
+      contract: makeContract(symbol, 'alpaca'),
       last: snapshot.LatestTrade.Price,
       bid: snapshot.LatestQuote.BidPrice,
       ask: snapshot.LatestQuote.AskPrice,
@@ -351,7 +350,7 @@ export class AlpacaBroker implements IBroker {
   // ---- Internal ----
 
   private mapOpenOrder(o: AlpacaOrderRaw): OpenOrder {
-    const contract = makeContract(o.symbol, this.provider)
+    const contract = makeContract(o.symbol, 'alpaca')
 
     const order = new Order()
     order.action = o.side.toUpperCase() // buy → BUY

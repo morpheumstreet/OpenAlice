@@ -102,7 +102,6 @@ export interface StageClosePositionParams {
 export class UnifiedTradingAccount {
   readonly id: string
   readonly label: string
-  readonly provider: string
   readonly broker: IBroker
   readonly git: TradingGit
   readonly platformId?: string
@@ -113,7 +112,6 @@ export class UnifiedTradingAccount {
     this.broker = broker
     this.id = broker.id
     this.label = broker.label
-    this.provider = broker.provider
     this.platformId = options.platformId
 
     // Wire internals
