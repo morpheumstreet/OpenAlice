@@ -291,6 +291,13 @@ export class UnifiedTradingAccount {
     if (prev !== this.health) this._emitHealthChange()
   }
 
+  /** Nudge the recovery loop to retry immediately (e.g., when a data request finds this UTA offline). */
+  nudgeRecovery(): void {
+    if (!this._recovering || this._disabled) return
+    if (this._recoveryTimer) clearTimeout(this._recoveryTimer)
+    this._scheduleRecoveryAttempt(0)
+  }
+
   private _startRecovery(): void {
     if (this._recovering) return
     this._recovering = true
